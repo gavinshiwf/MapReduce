@@ -23,7 +23,6 @@ package com.gavin.day0724;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
-
 import org.apache.hadoop.io.Writable;
 
 public class ScoreWritable implements Writable{
@@ -75,13 +74,11 @@ public class ScoreWritable implements Writable{
         English = in.readFloat();
         Physics = in.readFloat();
         Chemistry = in.readFloat();
-	}
-       
+	}    
 }
 
 第二步：自定义输入类型
 import java.io.IOException;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileSystem;
@@ -199,12 +196,10 @@ public class ScoreInputFormat extends FileInputFormat<Text,ScoreWritable>{
 		}
 		
 	}
-
 }
 
 第三步：设置Mapper类
 import java.io.IOException;
-
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Mapper;
 
@@ -220,15 +215,12 @@ public class ScoreMapper extends Mapper<Text,ScoreWritable,Text,Text>{
 
 第四步：设置主方法
 import java.io.IOException;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
-
-
 
 public class ScoreMain {
 
@@ -266,3 +258,84 @@ no10	name10	tolScore:386.0,avgScore:77.2
 no100	name100	tolScore:406.0,avgScore:81.2
 no101	name101	tolScore:424.0,avgScore:84.8
 no102	name102	tolScore:417.0,avgScore:83.4
+
+在自定义的输入类型中，我们自定义了一个内部类ScoreRecordReader类，该类返回了Map端接受的key和value,在该类主要工作是集中在initialize和nextKeyValue方法中。
+
+-------------------------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------------------
+如上的案例，我们可以不使用自定义输入类型，也能得出相关的答案，我们把接收到的每行数据，在Map端做解析。
+
+第一步：定义Mapper类
+import java.io.IOException;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Mapper;
+
+public class ScoreMapper1 extends Mapper<LongWritable,Text,Text,Text>{
+	//定义每门学生成绩
+	float a,b,c,d,e,avg;
+	public void map(LongWritable key,Text val,Context context) throws IOException, InterruptedException{
+		//解析每行数据
+		String[] strs = val.toString().split(",");
+		if(strs.length != 7){
+			throw new IOException("Invalid record");
+		}
+		//对每门成绩赋值
+		try{
+			a = Float.parseFloat(strs[2].trim());
+			b = Float.parseFloat(strs[3].trim());
+			c = Float.parseFloat(strs[4].trim());
+			d = Float.parseFloat(strs[5].trim());
+			e = Float.parseFloat(strs[6].trim());
+		}catch(NumberFormatException e1){
+			throw new IOException("Error parsing value");
+		}
+		avg=(a+b+c+d+e)/5;
+		context.write(new Text(strs[0]+"\t"+strs[1]), new Text(Float.toString(avg)));
+	}
+}
+
+第二步：设置主方法
+import java.io.IOException;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+
+public class ScoreMain1 {
+
+	public static void main(String[] args) throws IOException, ClassNotFoundException, InterruptedException {
+		Configuration conf = new Configuration();
+		Job job = Job.getInstance(conf);
+		//设置任务的运行类
+		job.setJarByClass(ScoreMain1.class);
+		
+		//设置Mapper类，Map端输出的key和value类型
+		job.setMapperClass(ScoreMapper1.class);
+		job.setMapOutputKeyClass(Text.class);
+		job.setMapOutputValueClass(Text.class);
+		
+		//设置整个任务的输出的类型
+		job.setOutputKeyClass(Text.class);
+		job.setOutputValueClass(Text.class);
+		
+		//设置自定义输入类型
+		job.setInputFormatClass(TextInputFormat.class);
+		
+		//设置job的输入路径和输出路径
+		FileInputFormat.setInputPaths(job, args[0]);
+		FileOutputFormat.setOutputPath(job, new Path(args[1]));
+		
+		job.waitForCompletion(true);
+		System.exit(0);
+	}
+}
+
+运行脚本：hadoop jar ScoreDemo.jar /20190724/score.txt /20190724/score-output1
+这个方式可以得到同样的结果，但是这种方式更加的方便，也更容易理解。
+
+
