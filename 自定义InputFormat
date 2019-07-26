@@ -259,6 +259,8 @@ public class ScoreMain {
 	}
 }
 
+执行：hadoop jar ScoreDemo.jar /20190724/score.txt /20190724/score-output
+
 得出结果案例为：
 no10	name10	tolScore:386.0,avgScore:77.2
 no100	name100	tolScore:406.0,avgScore:81.2
