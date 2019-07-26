@@ -1,0 +1,266 @@
+有时候Hadoop自带的输入格式并不能满足业务的需求，所以要根据实际的情况自定义InputFormat类，而数据源一般都是数据文件，那么自定义InputFormat时继承FileInputFormat类会更方便，从而不必考虑如何分片等复杂操作，自定义输入格式可以分为如下几个步骤：
+1.继承FileInputFormat基类
+2.重写FileInputFormat中的isSplitable方法，该方法用于判断文件是否是分片的。
+3.重写createRecordReader方法
+
+假设我们现在要算出一些学生的总成绩和平均成绩，案例数据如下：
+no5,name5,61,65,62,82,75
+no6,name6,73,72,86,68,84
+no7,name7,91,91,69,71,83
+no8,name8,77,65,61,88,66
+no9,name9,72,100,68,60,83
+no10,name10,84,62,86,65,89
+no11,name11,100,61,74,85,99
+no12,name12,93,78,87,99,74
+no13,name13,82,79,68,97,72
+no14,name14,91,84,63,64,83
+no15,name15,64,94,99,60,85
+no16,name16,71,71,83,91,73
+
+第一步：首先自定义序列化对象
+package com.gavin.day0724;
+
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.io.IOException;
+
+import org.apache.hadoop.io.Writable;
+
+public class ScoreWritable implements Writable{
+	private float Chinese;
+	private float Math;
+	private float English;
+	private float Physics;
+	private float Chemistry;
+	public ScoreWritable(){}
+	
+	public void set(float Chinese,float Math,float English,float Physics,float Chemistry){
+	    this.Chinese = Chinese;
+	    this.Math = Math;
+	    this.English = English;
+	    this.Physics = Physics;
+	    this.Chemistry = Chemistry;
+	}
+	
+	
+	public float getChinese() {
+        return Chinese;
+    }
+    public float getMath() {
+        return Math;
+    }
+    public float getEnglish() {
+        return English;
+    }
+    public float getPhysics() {
+        return Physics;
+    }
+    public float getChemistry() {
+        return Chemistry;
+    }
+
+	@Override
+	public void write(DataOutput out) throws IOException {
+		out.writeFloat(Chinese);
+        out.writeFloat(Math);
+        out.writeFloat(English);
+        out.writeFloat(Physics);
+        out.writeFloat(Chemistry);	
+	}
+
+	@Override
+	public void readFields(DataInput in) throws IOException {
+		Chinese = in.readFloat();
+        Math = in.readFloat();
+        English = in.readFloat();
+        Physics = in.readFloat();
+        Chemistry = in.readFloat();
+	}
+       
+}
+
+第二步：自定义输入类型
+import java.io.IOException;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FSDataInputStream;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.InputSplit;
+import org.apache.hadoop.mapreduce.JobContext;
+import org.apache.hadoop.mapreduce.RecordReader;
+import org.apache.hadoop.mapreduce.TaskAttemptContext;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.input.FileSplit;
+import org.apache.hadoop.util.LineReader;
+
+public class ScoreInputFormat extends FileInputFormat<Text,ScoreWritable>{
+	
+	/**
+	 * 判断给定的文件是否能分片
+	 */
+	@Override
+	protected boolean isSplitable(JobContext context, Path filename) {
+		return true;
+	} 
+	
+	
+	/**
+	 * 实现createRecordReader方法，返回自定义的ScoreRecordReader对象
+	 */
+	@Override
+	public RecordReader<Text, ScoreWritable> createRecordReader(InputSplit arg0, TaskAttemptContext arg1)
+			throws IOException, InterruptedException {
+		return new ScoreRecordReader();
+	}
+	
+	/**
+	 *<Text,ScoreWritable> 分别为Mapper端输入的key和value
+	 * */
+	public static class ScoreRecordReader extends RecordReader<Text,ScoreWritable>{
+		
+		public LineReader ln; //行读取器
+		public Text key; //key
+		public ScoreWritable value; //value
+		public Text line;  //每行读取到的数据
+		
+		@Override
+		public void close() throws IOException {
+			if(ln != null){
+				ln.close();
+			}
+		}
+
+		@Override
+		public Text getCurrentKey() throws IOException, InterruptedException {
+			// TODO Auto-generated method stub
+			return key;
+		}
+
+		@Override
+		public ScoreWritable getCurrentValue() throws IOException, InterruptedException {
+			// TODO Auto-generated method stub
+			return value;
+		}
+
+		@Override
+		public float getProgress() throws IOException, InterruptedException {
+			// TODO Auto-generated method stub
+			return 0;
+		}
+		
+		/**
+		 * 初始化操作，这里的操作有如下内容
+		 * ①根据输入的文件得到文件系统
+		 * ②利用文件系统，参数配置信息，获得LineReader对象
+		 */
+		@Override
+		public void initialize(InputSplit var1, TaskAttemptContext var2) throws IOException, InterruptedException {
+			FileSplit split = (FileSplit)var1;
+			Configuration conf = var2.getConfiguration();
+			//得到文件路径
+			Path file = split.getPath();
+			//根据参数配置和文件路径，得到文件系统
+			FileSystem fs = file.getFileSystem(conf);
+			
+			//获得文件输入流
+			FSDataInputStream input = fs.open(file);
+			//对变量实例化对象
+			ln = new LineReader(input,conf);
+			key = new Text();
+			value = new ScoreWritable();
+			line = new Text();
+		}
+		
+		@Override
+		public boolean nextKeyValue() throws IOException, InterruptedException {
+			int linesize = ln.readLine(line);
+			if(linesize == 0) return false;
+			//解析每行数据
+			String[] strs = line.toString().split(",");
+			if(strs.length != 7){
+				throw new IOException("Invalid record");
+			}
+			//定义每门学生成绩
+			float a,b,c,d,e;
+			try{
+				a = Float.parseFloat(strs[2].trim());
+				b = Float.parseFloat(strs[3].trim());
+				c = Float.parseFloat(strs[4].trim());
+				d = Float.parseFloat(strs[5].trim());
+				e = Float.parseFloat(strs[6].trim());
+			}catch(NumberFormatException e1){
+				throw new IOException("Error parsing value");
+			}
+			key.set(strs[0]+"\t"+strs[1]);  //完成自定义的key数据
+			value.set(a, b, c, d, e); //完成自定义的value数据
+			return true;
+		}
+		
+	}
+
+}
+
+第三步：设置Mapper类
+import java.io.IOException;
+
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Mapper;
+
+public class ScoreMapper extends Mapper<Text,ScoreWritable,Text,Text>{
+	public void map(Text key,ScoreWritable val,Context context) throws IOException, InterruptedException{
+		float tol = 0f;
+		tol = val.getChemistry()+val.getChinese()+val.getEnglish()
+		+val.getMath()+val.getPhysics();
+		float avg = tol / 5;
+		context.write(key, new Text("tolScore:"+tol+",avgScore:"+avg));
+	}
+}
+
+第四步：设置主方法
+import java.io.IOException;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+
+
+
+public class ScoreMain {
+
+	public static void main(String[] args) throws IOException, ClassNotFoundException, InterruptedException {
+		Configuration conf = new Configuration();
+		Job job = Job.getInstance(conf);
+		//设置任务的运行类
+		job.setJarByClass(ScoreMain.class);
+		
+		//设置Mapper类，Map端输出的key和value类型
+		job.setMapperClass(ScoreMapper.class);
+		job.setMapOutputKeyClass(Text.class);
+		job.setMapOutputValueClass(Text.class);
+		
+		//设置整个任务的输出的类型
+		job.setOutputKeyClass(Text.class);
+		job.setOutputValueClass(Text.class);
+		
+		//设置自定义输入类型
+		job.setInputFormatClass(ScoreInputFormat.class);
+		
+		//设置job的输入路径和输出路径
+		FileInputFormat.setInputPaths(job, args[0]);
+		FileOutputFormat.setOutputPath(job, new Path(args[1]));
+		
+		job.waitForCompletion(true);
+		System.exit(0);
+	}
+}
+
+得出结果案例为：
+no10	name10	tolScore:386.0,avgScore:77.2
+no100	name100	tolScore:406.0,avgScore:81.2
+no101	name101	tolScore:424.0,avgScore:84.8
+no102	name102	tolScore:417.0,avgScore:83.4
