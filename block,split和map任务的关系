@@ -1,0 +1,25 @@
+一个split可能由一个或多个block组成，而map任务和split是一一对应的。
+首先我们看下FileInputFormat的源码：
+public List<InputSplit> getSplits(JobContext job) throws IOException {
+    Stopwatch sw = new Stopwatch().start();
+    long minSize = Math.max(getFormatMinSplitSize(), getMinSplitSize(job));
+    long maxSize = getMaxSplitSize(job);
+....
+long blockSize = file.getBlockSize();
+          long splitSize = computeSplitSize(blockSize, minSize, maxSize);
+
+          long bytesRemaining = length;
+          while (((double) bytesRemaining)/splitSize > SPLIT_SLOP) {
+            int blkIndex = getBlockIndex(blkLocations, length-bytesRemaining);
+            splits.add(makeSplit(path, length-bytesRemaining, splitSize,
+                        blkLocations[blkIndex].getHosts(),
+                        blkLocations[blkIndex].getCachedHosts()));
+            bytesRemaining -= splitSize;
+
+在这里long splitSize = computeSplitSize(blockSize, minSize, maxSize); 它设定了每个split的大小。
+该代码等价于Math.max(minSize, Math.min(maxSize, blockSize));
+这里的参数blockSize的即使文件系统的块大小，
+minSize为"mapreduce.input.fileinputformat.split.minsize"的值
+maxSize为"mapreduce.input.fileinputformat.split.maxsize"的值
+
+这如上这段代码中，SPLIT_SLOP非常重要，该值为1.1，通过这段代码我们可以看出，当每次是否再分片时，它做了判断文件分片完的剩余大小除以分片大小，看只是否大于这个阀值，如果小于等于该阀值，就无需在分片了，假设一个文件大小为260M，那么就有两个分片（128和132).在这里就体现了1个split任务有2个block组成。
