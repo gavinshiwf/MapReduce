@@ -1,5 +1,18 @@
+测试案例数据为：
+wolys@21cn.com
+zss1984@126.com
+294522652@qq.com
+
 默认情况下一个Reduce，输出只有一个文件，有时可能需要对输出的文件名进行控制或让每个Reduce输出多个文件，有两种方式实现Reducer输出多个文件。
 1.利用Partitioner来重新确定分区的个数，每个分区就是一个输出文件
 2.利用MultipleOutputs类，我们主要是利用了该类中的如下两个方法：
   (1)write(key,value,name)，这个方法中，key是reduce输出的key,value为reduce输出的value,name为每个输出文件的文件名头
 这里的案例源代码分别为：MailMapper,MailReducer,MailMain
+
+  (2)write(String namedOutput,K key,V value)和MultipleOutpus.addNamedOutput(Job job, String namedOutput, Class<? extends OutputFormat> 
+  outputFormatClass, Class<?> keyClass, Class<?> valueClass),这两个方法需要搭配使用。
+在使用MultipleOutputs类多输出文件时，需要如下注意点：
+(1)需要重写cleanup()方法，在该方法中需要调用MultipleOutputs对象的close()方法，释放资源。
+(2)在使用write(String namedOutput,K key,V value)和MultipleOutpus.addNamedOutput()两个方法搭配使用时，在addNamedOutput()方法中的参数namedOutput
+和write()方法中的参数namedOutput一一匹配。
+这里的源代码为：MailMapper,MailReducer1,MailMain1
