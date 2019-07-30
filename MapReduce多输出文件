@@ -2,3 +2,4 @@
 1.利用Partitioner来重新确定分区的个数，每个分区就是一个输出文件
 2.利用MultipleOutputs类，我们主要是利用了该类中的如下两个方法：
   write(key,value,name)，这个方法中，key是reduce输出的key,value为reduce输出的value,name为每个输出文件的文件名头
+源代码分别为：MailMapper,MailReducer,MailMain
